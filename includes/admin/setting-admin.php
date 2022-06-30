@@ -53,6 +53,8 @@ function lkn_autoconnect_wp_add_login_submenu_section() {
         'lkn_autoconnect_wp_render_login_page',
         2
     );
+
+    add_action('load-' . $hookname, 'lkn_autoconnect_wp_login_form_handle');
 }
 
 add_action('admin_menu', 'lkn_autoconnect_wp_add_login_submenu_section');
@@ -138,16 +140,7 @@ function lkn_autoconnect_wp_render_config_page() {
 }
 
 function lkn_autoconnect_wp_render_login_page() {
-    $authkey = get_option('lkn_autoconnect_wp_identifier', '');
-    $website = get_option('lkn_autoconnect_wp_cli_website', '');
-
-    $encodedInfo = base64_encode(json_encode(['auth' => $authkey, 'origin' => get_site_url()]));
-    $url = add_query_arg([
-        'action' => 'validatesso',
-        'i' => $encodedInfo,
-    ], $website);
-
-    $nonce = password_hash('', PASSWORD_BCRYPT, ['salt' => '}kcq-m|G |R -*hFg|+p2wb(V^CF~#qzcoh~[~.ZwmTU7nocYs_*txxz-{FoJM?']);
+    // $nonce = password_hash('', PASSWORD_BCRYPT, ['salt' => '}kcq-m|G |R -*hFg|+p2wb(V^CF~#qzcoh~[~.ZwmTU7nocYs_*txxz-{FoJM?']);
 
     // $url = $website . '?i=' . $encodedInfo . '&action=validatesso';
 
@@ -158,7 +151,7 @@ function lkn_autoconnect_wp_render_login_page() {
         <h1><?php esc_html_e(get_admin_page_title()); ?></h1>
         <?php settings_errors(); ?>
         <form action="<?php menu_page_url('lkn-autoconnect-wp-login') ?>" method="post" class="lkn-autoconnect-wp-form-wrap">
-        <?php wp_nonce_field('lkn_autoconnect_wp_save_login'); ?>
+        <?php wp_nonce_field('lkn_autoconnect_wp_redirect_login'); ?>
         <div class="lkn-autoconnect-wp-login-data">
             <div class="lkn-autoconnect-wp-pl-row-wrap">
                 <div class="lkn-autoconnect-wp-btn-login">
@@ -191,9 +184,6 @@ function lkn_autoconnect_wp_render_login_page() {
     }
     </style>
     <script>
-        function lkn_autoconnect_wp_redirect_url() {
-            window.open('<?php echo $url; ?>');
-        }
     </script>
     <?php
 }
@@ -202,18 +192,19 @@ function lkn_autoconnect_wp_configuration_form_handle() {
     // TODO validate client website
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         if (isset($_POST['_wpnonce']) && wp_verify_nonce($_POST['_wpnonce'], 'lkn_autoconnect_wp_save_config')) {
-            if (isset($_POST['lkn_autoconnect_wp_cli_website']) && !empty($_POST['lkn_autoconnect_wp_cli_website']) && isset($_POST['lkn_autoconnect_wp_identifier']) && !empty($_POST['lkn_autoconnect_wp_identifier'])) {
+            if (isset($_POST['lkn_autoconnect_wp_cli_website']) && !empty($_POST['lkn_autoconnect_wp_cli_website'])) {
                 $authkey = get_option('lkn_autoconnect_wp_identifier', wp_generate_password(32, true));
                 $website = $_POST['lkn_autoconnect_wp_cli_website'];
 
                 if ($authkey !== false) {
                     $args['body'] = [
-                        'data' => base64_encode(json_encode(['auth' => $authkey])),
+                        'data' => base64_encode(json_encode(['auth' => $authkey, 'origin' => get_site_url()])),
+                        'action' => 'generatesso',
                     ];
 
                     $response = wp_remote_post($website, $args);
 
-                    if ($response == true) {
+                    if ($response['body'] === true) {
                         update_option('lkn_autoconnect_wp_identifier', $authkey);
 
                         if (get_option('lkn_autoconnect_wp_cli_website') === false) {
@@ -224,14 +215,17 @@ function lkn_autoconnect_wp_configuration_form_handle() {
 
                         echo '<div class="lkn-autoconnect-wp-notice-positive">' . __('Settings successfully saved', 'lkn-autoconnect-wp-plugin') . '</div>';
                     } else {
-                        echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
+                        echo var_export($response, true);
+                        //echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
                     }
                 }
             } else {
-                echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
+                echo 'error on veryfi post attributes';
+                // echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
             }
         } else {
-            echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
+            echo 'request method invalid';
+            // echo '<div class="lkn-autoconnect-wp-notice-negative">' . __('Error on save settings', 'lkn-autoconnect-wp-plugin') . '</div>';
         }
     }
 }
@@ -239,9 +233,32 @@ function lkn_autoconnect_wp_configuration_form_handle() {
 function lkn_autoconnect_wp_login_form_handle() {
     // TODO treat autoconnect by
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-        if (isset($_POST['_wpnonce']) && wp_verify_nonce($_POST['_wpnonce'], 'lkn_autoconnect_wp_save_login')) {
-            wp_redirect('');
+        if (isset($_POST['_wpnonce']) && wp_verify_nonce($_POST['_wpnonce'], 'lkn_autoconnect_wp_redirect_login')) {
+            $authkey = get_option('lkn_autoconnect_wp_identifier', '');
+            $website = get_option('lkn_autoconnect_wp_cli_website', '');
+
+            $encodedInfo = base64_encode(json_encode(['auth' => $authkey, 'origin' => get_site_url()]));
+            $url = add_query_arg([
+                'action' => 'validatesso',
+                'i' => $encodedInfo,
+            ], $website);
+            $backUrl = admin_url('admin.php?page=lkn-autoconnect-wp-admin');
+
+            $page = <<<HTML
+            <script>
+                window.open('$url');
+                setTimeout(() => {
+                    window.location.href = '$backUrl';
+                }, 1500);
+            </script>
+HTML;
+            // wp_redirect($url);
+            // wp_redirect(admin_url('admin.php?page=lkn-autoconnect-wp-admin'));
+            // echo '<script> window.open("' . $url . '") </script>';
+            echo $page;
             exit;
+        } else {
+            echo 'error on validate nonce';
         }
     }
 }
